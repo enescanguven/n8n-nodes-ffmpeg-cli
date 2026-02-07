@@ -1,9 +1,24 @@
 {
-  "name": "n8n-nodes-ffmpeg",
-  "version": "0.1.0",
-  "description": "Run any FFmpeg command directly in n8n",
+  "name": "n8n-nodes-ffmpeg-cli",
+  "version": "0.2.0",
+  "description": "Run any FFmpeg command directly in n8n — no wrappers, just raw FFmpeg",
   "license": "MIT",
-  "author": "shain",
+  "author": "enescanguven",
+  "homepage": "https://github.com/enescanguven/n8n-nodes-ffmpeg",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/enescanguven/n8n-nodes-ffmpeg.git"
+  },
+  "keywords": [
+    "n8n-community-node-package",
+    "n8n",
+    "ffmpeg",
+    "video",
+    "audio",
+    "media",
+    "transcode",
+    "convert"
+  ],
   "main": "dist/nodes/Ffmpeg/Ffmpeg.node.js",
   "scripts": {
     "build": "tsc",
