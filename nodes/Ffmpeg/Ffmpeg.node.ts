@@ -10,10 +10,18 @@ import { writeFileSync, readFileSync, unlinkSync, existsSync, chmodSync } from '
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 
+const FFMPEG_CACHE_PATH = '/tmp/ffmpeg_bin';
+
 function getFfmpegPath(): { bin: string; debug: string } {
 	const tried: string[] = [];
 
-	// 1) Try require('ffmpeg-static')
+	// 1) Check cached download from previous run
+	if (existsSync(FFMPEG_CACHE_PATH)) {
+		tried.push(`cached binary found at ${FFMPEG_CACHE_PATH}`);
+		return { bin: FFMPEG_CACHE_PATH, debug: tried.join('; ') };
+	}
+
+	// 2) Try require('ffmpeg-static')
 	try {
 		const ffmpegStatic = require('ffmpeg-static') as string;
 		tried.push(`ffmpeg-static resolved: ${ffmpegStatic}`);
@@ -26,22 +34,7 @@ function getFfmpegPath(): { bin: string; debug: string } {
 		tried.push(`ffmpeg-static require failed: ${e.message}`);
 	}
 
-	// 2) Try well-known paths where n8n installs community packages
-	const searchPaths = [
-		join(__dirname, '..', '..', 'node_modules', 'ffmpeg-static', 'ffmpeg'),
-		join(__dirname, '..', '..', '..', 'node_modules', 'ffmpeg-static', 'ffmpeg'),
-		join(__dirname, '..', '..', '..', '..', 'node_modules', 'ffmpeg-static', 'ffmpeg'),
-		'/home/node/.n8n/nodes/node_modules/ffmpeg-static/ffmpeg',
-	];
-	for (const p of searchPaths) {
-		tried.push(`checking ${p}`);
-		if (existsSync(p)) {
-			chmodSync(p, 0o755);
-			return { bin: p, debug: tried.join('; ') };
-		}
-	}
-
-	// 3) Try system which
+	// 3) Try system ffmpeg
 	try {
 		const systemPath = execSync('which ffmpeg 2>/dev/null').toString().trim();
 		if (systemPath) {
@@ -50,6 +43,33 @@ function getFfmpegPath(): { bin: string; debug: string } {
 		}
 	} catch {
 		tried.push('system ffmpeg not found');
+	}
+
+	// 4) Download static ffmpeg binary
+	tried.push('downloading ffmpeg static binary...');
+	try {
+		execSync(
+			`curl -sL "https://github.com/eugeneware/ffmpeg-static/releases/latest/download/ffmpeg-linux-x64" -o "${FFMPEG_CACHE_PATH}" && chmod +x "${FFMPEG_CACHE_PATH}"`,
+			{ timeout: 120000 },
+		);
+		if (existsSync(FFMPEG_CACHE_PATH)) {
+			tried.push('download successful');
+			return { bin: FFMPEG_CACHE_PATH, debug: tried.join('; ') };
+		}
+	} catch (e: any) {
+		tried.push(`download failed: ${e.message}`);
+	}
+
+	// 5) Try apk install as last resort
+	try {
+		execSync('apk add --no-cache ffmpeg 2>/dev/null', { timeout: 60000 });
+		const apkPath = execSync('which ffmpeg 2>/dev/null').toString().trim();
+		if (apkPath) {
+			tried.push(`apk install succeeded: ${apkPath}`);
+			return { bin: apkPath, debug: tried.join('; ') };
+		}
+	} catch {
+		tried.push('apk install failed');
 	}
 
 	return { bin: 'ffmpeg', debug: tried.join('; ') };
