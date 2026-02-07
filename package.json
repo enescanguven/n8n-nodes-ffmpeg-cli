@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-ffmpeg-cli",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Run any FFmpeg command directly in n8n — no wrappers, just raw FFmpeg",
   "license": "MIT",
   "author": "enescanguven",

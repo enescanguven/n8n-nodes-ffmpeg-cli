@@ -6,70 +6,81 @@ import {
 } from 'n8n-workflow';
 
 import { execSync } from 'child_process';
-import { writeFileSync, readFileSync, unlinkSync, existsSync, chmodSync } from 'fs';
+import { writeFileSync, readFileSync, unlinkSync, existsSync, chmodSync, createWriteStream } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
+import https from 'https';
 
 const FFMPEG_CACHE_PATH = '/tmp/ffmpeg_bin';
 
-function getFfmpegPath(): { bin: string; debug: string } {
+function downloadFile(url: string, dest: string): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const follow = (url: string, redirects: number) => {
+			if (redirects > 10) return reject(new Error('Too many redirects'));
+			https.get(url, (res) => {
+				if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+					return follow(res.headers.location, redirects + 1);
+				}
+				if (res.statusCode !== 200) {
+					return reject(new Error(`HTTP ${res.statusCode}`));
+				}
+				const file = createWriteStream(dest);
+				res.pipe(file);
+				file.on('finish', () => { file.close(); resolve(); });
+				file.on('error', reject);
+			}).on('error', reject);
+		};
+		follow(url, 0);
+	});
+}
+
+async function getFfmpegPath(): Promise<{ bin: string; debug: string }> {
 	const tried: string[] = [];
 
-	// 1) Check cached download from previous run
+	// 1) Check cached download
 	if (existsSync(FFMPEG_CACHE_PATH)) {
-		tried.push(`cached binary found at ${FFMPEG_CACHE_PATH}`);
+		tried.push(`cached at ${FFMPEG_CACHE_PATH}`);
 		return { bin: FFMPEG_CACHE_PATH, debug: tried.join('; ') };
 	}
 
 	// 2) Try require('ffmpeg-static')
 	try {
 		const ffmpegStatic = require('ffmpeg-static') as string;
-		tried.push(`ffmpeg-static resolved: ${ffmpegStatic}`);
+		tried.push(`ffmpeg-static: ${ffmpegStatic}`);
 		if (ffmpegStatic && existsSync(ffmpegStatic)) {
 			chmodSync(ffmpegStatic, 0o755);
 			return { bin: ffmpegStatic, debug: tried.join('; ') };
 		}
-		tried.push(`but file does not exist`);
+		tried.push('file missing');
 	} catch (e: any) {
-		tried.push(`ffmpeg-static require failed: ${e.message}`);
+		tried.push(`require failed: ${e.message}`);
 	}
 
 	// 3) Try system ffmpeg
 	try {
 		const systemPath = execSync('which ffmpeg 2>/dev/null').toString().trim();
 		if (systemPath) {
-			tried.push(`system ffmpeg: ${systemPath}`);
+			tried.push(`system: ${systemPath}`);
 			return { bin: systemPath, debug: tried.join('; ') };
 		}
 	} catch {
-		tried.push('system ffmpeg not found');
+		tried.push('no system ffmpeg');
 	}
 
-	// 4) Download static ffmpeg binary
-	tried.push('downloading ffmpeg static binary...');
+	// 4) Download via Node.js https (no curl needed)
+	tried.push('downloading via https...');
 	try {
-		execSync(
-			`curl -sL "https://github.com/eugeneware/ffmpeg-static/releases/latest/download/ffmpeg-linux-x64" -o "${FFMPEG_CACHE_PATH}" && chmod +x "${FFMPEG_CACHE_PATH}"`,
-			{ timeout: 120000 },
+		await downloadFile(
+			'https://github.com/eugeneware/ffmpeg-static/releases/latest/download/ffmpeg-linux-x64',
+			FFMPEG_CACHE_PATH,
 		);
+		chmodSync(FFMPEG_CACHE_PATH, 0o755);
 		if (existsSync(FFMPEG_CACHE_PATH)) {
-			tried.push('download successful');
+			tried.push('download ok');
 			return { bin: FFMPEG_CACHE_PATH, debug: tried.join('; ') };
 		}
 	} catch (e: any) {
 		tried.push(`download failed: ${e.message}`);
-	}
-
-	// 5) Try apk install as last resort
-	try {
-		execSync('apk add --no-cache ffmpeg 2>/dev/null', { timeout: 60000 });
-		const apkPath = execSync('which ffmpeg 2>/dev/null').toString().trim();
-		if (apkPath) {
-			tried.push(`apk install succeeded: ${apkPath}`);
-			return { bin: apkPath, debug: tried.join('; ') };
-		}
-	} catch {
-		tried.push('apk install failed');
 	}
 
 	return { bin: 'ffmpeg', debug: tried.join('; ') };
@@ -145,7 +156,7 @@ export class Ffmpeg implements INodeType {
 			const tmpDir = '/tmp';
 			const tempFiles: string[] = [];
 
-			const { bin: ffmpegBin, debug: ffmpegDebug } = getFfmpegPath();
+			const { bin: ffmpegBin, debug: ffmpegDebug } = await getFfmpegPath();
 
 			try {
 				let command = this.getNodeParameter('command', i) as string;
