@@ -6,9 +6,22 @@ import {
 } from 'n8n-workflow';
 
 import { execSync } from 'child_process';
-import { writeFileSync, readFileSync, unlinkSync } from 'fs';
+import { writeFileSync, readFileSync, unlinkSync, existsSync, chmodSync } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
+
+function getFfmpegPath(): string {
+	// Try bundled ffmpeg-static first
+	try {
+		const ffmpegStatic = require('ffmpeg-static') as string;
+		if (ffmpegStatic && existsSync(ffmpegStatic)) {
+			chmodSync(ffmpegStatic, 0o755);
+			return ffmpegStatic;
+		}
+	} catch {}
+	// Fallback to system ffmpeg
+	return 'ffmpeg';
+}
 
 export class Ffmpeg implements INodeType {
 	description: INodeTypeDescription = {
@@ -125,7 +138,8 @@ export class Ffmpeg implements INodeType {
 				command = command.replace(/\{output\}/g, outputPath);
 
 				// Run FFmpeg
-				const fullCommand = `ffmpeg -y ${command}`;
+				const ffmpegBin = getFfmpegPath();
+				const fullCommand = `${ffmpegBin} -y ${command}`;
 				execSync(fullCommand, {
 					timeout,
 					stdio: ['pipe', 'pipe', 'pipe'],
