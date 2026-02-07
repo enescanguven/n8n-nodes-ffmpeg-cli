@@ -10,17 +10,49 @@ import { writeFileSync, readFileSync, unlinkSync, existsSync, chmodSync } from '
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 
-function getFfmpegPath(): string {
-	// Try bundled ffmpeg-static first
+function getFfmpegPath(): { bin: string; debug: string } {
+	const tried: string[] = [];
+
+	// 1) Try require('ffmpeg-static')
 	try {
 		const ffmpegStatic = require('ffmpeg-static') as string;
+		tried.push(`ffmpeg-static resolved: ${ffmpegStatic}`);
 		if (ffmpegStatic && existsSync(ffmpegStatic)) {
 			chmodSync(ffmpegStatic, 0o755);
-			return ffmpegStatic;
+			return { bin: ffmpegStatic, debug: tried.join('; ') };
 		}
-	} catch {}
-	// Fallback to system ffmpeg
-	return 'ffmpeg';
+		tried.push(`but file does not exist`);
+	} catch (e: any) {
+		tried.push(`ffmpeg-static require failed: ${e.message}`);
+	}
+
+	// 2) Try well-known paths where n8n installs community packages
+	const searchPaths = [
+		join(__dirname, '..', '..', 'node_modules', 'ffmpeg-static', 'ffmpeg'),
+		join(__dirname, '..', '..', '..', 'node_modules', 'ffmpeg-static', 'ffmpeg'),
+		join(__dirname, '..', '..', '..', '..', 'node_modules', 'ffmpeg-static', 'ffmpeg'),
+		'/home/node/.n8n/nodes/node_modules/ffmpeg-static/ffmpeg',
+	];
+	for (const p of searchPaths) {
+		tried.push(`checking ${p}`);
+		if (existsSync(p)) {
+			chmodSync(p, 0o755);
+			return { bin: p, debug: tried.join('; ') };
+		}
+	}
+
+	// 3) Try system which
+	try {
+		const systemPath = execSync('which ffmpeg 2>/dev/null').toString().trim();
+		if (systemPath) {
+			tried.push(`system ffmpeg: ${systemPath}`);
+			return { bin: systemPath, debug: tried.join('; ') };
+		}
+	} catch {
+		tried.push('system ffmpeg not found');
+	}
+
+	return { bin: 'ffmpeg', debug: tried.join('; ') };
 }
 
 export class Ffmpeg implements INodeType {
@@ -93,6 +125,8 @@ export class Ffmpeg implements INodeType {
 			const tmpDir = '/tmp';
 			const tempFiles: string[] = [];
 
+			const { bin: ffmpegBin, debug: ffmpegDebug } = getFfmpegPath();
+
 			try {
 				let command = this.getNodeParameter('command', i) as string;
 				const inputBinaries = (this.getNodeParameter('inputBinaries', i) as string)
@@ -138,8 +172,7 @@ export class Ffmpeg implements INodeType {
 				command = command.replace(/\{output\}/g, outputPath);
 
 				// Run FFmpeg
-				const ffmpegBin = getFfmpegPath();
-				const fullCommand = `${ffmpegBin} -y ${command}`;
+				const fullCommand = `"${ffmpegBin}" -y ${command}`;
 				execSync(fullCommand, {
 					timeout,
 					stdio: ['pipe', 'pipe', 'pipe'],
@@ -174,6 +207,9 @@ export class Ffmpeg implements INodeType {
 						success: false,
 						error: error.message,
 						stderr: error.stderr?.toString() || '',
+						ffmpegBin,
+						ffmpegDebug,
+						nodeDir: __dirname,
 					},
 				});
 			} finally {
