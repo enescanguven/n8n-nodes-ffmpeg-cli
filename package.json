@@ -1,0 +1,28 @@
+{
+  "name": "n8n-nodes-ffmpeg",
+  "version": "0.1.0",
+  "description": "Run any FFmpeg command directly in n8n",
+  "license": "MIT",
+  "author": "shain",
+  "main": "dist/nodes/Ffmpeg/Ffmpeg.node.js",
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "nodes": [
+      "dist/nodes/Ffmpeg/Ffmpeg.node.js"
+    ]
+  },
+  "dependencies": {
+    "n8n-workflow": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "n8n-core": "*"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  }
+}
