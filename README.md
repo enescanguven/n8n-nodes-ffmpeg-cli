@@ -1,155 +1,100 @@
 # n8n-nodes-ffmpeg-cli
 
-Run **any** FFmpeg command directly inside your n8n workflows. No wrappers, no abstractions — just raw FFmpeg power.
+[![npm version](https://img.shields.io/npm/v/n8n-nodes-ffmpeg-cli.svg)](https://www.npmjs.com/package/n8n-nodes-ffmpeg-cli)
+[![npm downloads](https://img.shields.io/npm/dm/n8n-nodes-ffmpeg-cli.svg)](https://www.npmjs.com/package/n8n-nodes-ffmpeg-cli)
+[![license](https://img.shields.io/npm/l/n8n-nodes-ffmpeg-cli.svg)](https://github.com/enescanguven/n8n-nodes-ffmpeg/blob/main/LICENSE)
 
-## Why this node?
+Run **any** FFmpeg command directly inside your [n8n](https://n8n.io) workflows.
 
-Other FFmpeg nodes try to wrap FFmpeg behind dropdowns and limited options. This node takes a different approach: **you write the FFmpeg command, it runs it.** If you know FFmpeg, you already know how to use this node.
+**[npm](https://www.npmjs.com/package/n8n-nodes-ffmpeg-cli)** | **[GitHub](https://github.com/enescanguven/n8n-nodes-ffmpeg)**
 
-- Direct FFmpeg command execution — no hidden magic
-- Support for multiple binary inputs (`{video}`, `{audio}`, `{image}`, or any name)
-- Automatic temp file handling and cleanup
-- Works with any FFmpeg operation: transcode, merge, trim, overlay, extract, convert — anything
+---
 
-## Installation
+## Why?
 
-In your n8n instance:
+Let's be honest: you're going to ask AI to write the FFmpeg command anyway.
 
-1. Go to **Settings → Community Nodes**
-2. Click **Install**
-3. Enter `n8n-nodes-ffmpeg-cli`
-4. Click **Install**
+Every other FFmpeg node tries to "simplify" things by hiding FFmpeg behind dropdowns, limited presets, and abstractions. But FFmpeg already has a perfectly good interface — its command line. And in 2025, AI writes FFmpeg commands better than any dropdown menu ever could.
 
-> **Requirement:** FFmpeg must be installed on the machine/container running n8n.
-
-## How it works
-
-1. Binary inputs from previous nodes are written to temp files
-2. Placeholders in your command are replaced with actual file paths
-3. FFmpeg runs the command
-4. Output file is captured as binary data for the next node
-
-## Parameters
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| **FFmpeg Command** | Your FFmpeg arguments with placeholders | `-i {input} -c:v copy -c:a aac {output}` |
-| **Input Binary Properties** | Comma-separated binary property names | `data` |
-| **Output File Extension** | Extension for the output file | `mp4` |
-| **Output Binary Property** | Binary property name for the result | `data` |
-| **Output File Name** | File name for the output | `output.mp4` |
-| **Timeout (seconds)** | Max execution time | `120` |
-
-## Placeholders
-
-| Placeholder | Resolves to |
-|-------------|-------------|
-| `{input}` | First binary input file path |
-| `{output}` | Output file path |
-| `{data}` | Binary property named "data" |
-| `{video}` | Binary property named "video" |
-| `{audio}` | Binary property named "audio" |
-| `{anyname}` | Binary property named "anyname" |
-
-Any binary property name wrapped in curly braces becomes a placeholder.
-
-## Examples
-
-### Replace video audio with a new track
-
-**Input Binary Properties:** `video, audio`
-
-```
--i {video} -i {audio} -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest {output}
-```
-
-### Convert video to GIF
-
-**Output File Extension:** `gif`
+So why fight it? **Just paste the command.**
 
 ```
 -i {input} -vf "fps=10,scale=320:-1" -loop 0 {output}
 ```
 
-### Extract audio from video
+That's it. No wrappers, no magic, no learning a new UI on top of FFmpeg. You already know how to use this node.
 
-**Output File Extension:** `mp3`
+## Zero Setup
 
+The node **automatically handles FFmpeg installation at runtime**. You don't need to install FFmpeg on your machine, container, or server. On first run, it resolves the binary in this order:
+
+1. Bundled `ffmpeg-static` binary (comes with the package)
+2. System FFmpeg (if already installed)
+3. Auto-downloads a static FFmpeg binary (cached for future runs)
+
+Just install the node and go.
+
+## Install
+
+In your n8n instance:
+
+1. Go to **Settings > Community Nodes**
+2. Click **Install**
+3. Enter `n8n-nodes-ffmpeg-cli`
+4. Done.
+
+## Usage
+
+Write your FFmpeg command using placeholders:
+
+| Placeholder | Description |
+|---|---|
+| `{input}` | First binary input |
+| `{output}` | Output file |
+| `{video}`, `{audio}`, `{image}`, `{anything}` | Named binary properties |
+
+### Examples
+
+**Convert to GIF** (output extension: `gif`)
+```
+-i {input} -vf "fps=10,scale=320:-1" -loop 0 {output}
+```
+
+**Extract audio** (output extension: `mp3`)
 ```
 -i {input} -vn -acodec libmp3lame -q:a 2 {output}
 ```
 
-### Trim video (first 30 seconds)
+**Replace audio track** (input binaries: `video, audio`)
+```
+-i {video} -i {audio} -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest {output}
+```
 
+**Trim first 30 seconds**
 ```
 -i {input} -t 30 -c copy {output}
 ```
 
-### Add image watermark to video
-
-**Input Binary Properties:** `video, watermark`
-
+**Watermark** (input binaries: `video, watermark`)
 ```
 -i {video} -i {watermark} -filter_complex "overlay=10:10" -c:a copy {output}
 ```
 
-### Resize video to 720p
-
+**Resize to 720p**
 ```
 -i {input} -vf "scale=-2:720" -c:a copy {output}
 ```
 
-### Merge audio and image into video
+## Parameters
 
-**Input Binary Properties:** `image, audio`
-**Output File Extension:** `mp4`
-
-```
--loop 1 -i {image} -i {audio} -c:v libx264 -tune stillimage -c:a aac -b:a 192k -shortest {output}
-```
-
-### Convert to WebM
-
-**Output File Extension:** `webm`
-
-```
--i {input} -c:v libvpx-vp9 -crf 30 -b:v 0 -c:a libopus {output}
-```
-
-## Output
-
-On success, the node outputs:
-
-```json
-{
-  "success": true,
-  "command": "ffmpeg -y -i /tmp/ffmpeg_data_xxx.mp4 -c:v copy -c:a aac /tmp/ffmpeg_out_xxx.mp4",
-  "outputSize": 1234567
-}
-```
-
-Plus the binary output file attached to the specified binary property.
-
-On failure:
-
-```json
-{
-  "success": false,
-  "error": "Error message",
-  "stderr": "FFmpeg stderr output"
-}
-```
-
-## Docker / Self-hosted
-
-If your n8n runs in Docker, make sure FFmpeg is installed in the container:
-
-```dockerfile
-# Add to your Dockerfile
-RUN apt-get update && apt-get install -y ffmpeg
-```
-
-Or use an n8n image that already includes FFmpeg.
+| Parameter | Default | Description |
+|---|---|---|
+| FFmpeg Command | `-i {input} -c:v copy -c:a aac {output}` | Your FFmpeg arguments |
+| Input Binary Properties | `data` | Comma-separated binary property names |
+| Output File Extension | `mp4` | Output format |
+| Output Binary Property | `data` | Binary property name for result |
+| Output File Name | `output.mp4` | Output file name |
+| Timeout | `120` | Max execution time in seconds |
 
 ## License
 
